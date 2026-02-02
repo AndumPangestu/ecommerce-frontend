@@ -1,0 +1,21 @@
+services:
+  web:
+    # Ganti dengan nama image Anda di Docker Hub
+    # Contoh: johndoe/ecommerce-frontend:latest
+    image: your-dockerhub-username/ecommerce-frontend:latest
+
+    container_name: ecommerce-frontend
+
+    # Mapping port: Port Server : Port Container
+    # Menggunakan port 80 agar bisa diakses langsung via IP/Domain
+    ports:
+      - "80:80"
+
+    # Policy restart: Container akan otomatis restart jika server reboot atau crash
+    restart: unless-stopped
+
+    # Environment Variables
+    # Mengambil nilai dari file .env di direktori yang sama
+    environment:
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL}
+      - VITE_CHATBOT_URL=${VITE_CHATBOT_URL}

@@ -4,11 +4,18 @@ import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { useLocalizedPath } from "@/shared/i18n/LanguageContext";
 import { useChatbot } from "@/features/chatbot/context/ChatbotContext";
+import { useAuth } from "@/features/auth/context/AuthContext";
+import { toast } from "@/shared/hooks/use-toast";
 import ChatbotProductCard from "./ChatbotProductCard";
 import ChatbotProductComparison from "./ChatbotProductComparison";
+import ChatbotCategoryCard from "./ChatbotCategoryCard";
+import ChatbotMessageContent from "./ChatbotMessageContent";
+import ChatbotOptions from "./ChatbotOptions";
+import ChatbotVoucherCard, { Voucher } from "./ChatbotVoucherCard";
 import { useChatHistory } from "../hooks/useChatHistory";
 import { useSendMessage } from "../hooks/useSendMessage";
 import { Product } from "@/features/product/types/product.type";
+import { ChatbotCategory } from "@/features/chatbot/types/chat.type";
 
 interface Message {
   id: string;
@@ -16,12 +23,15 @@ interface Message {
   sender: "user" | "bot";
   timestamp: Date;
   products?: Product[];
-  type?: "text" | "product" | "options" | "comparison";
+  categories?: ChatbotCategory[];
+  voucher?: Voucher;
+  type?: "text" | "product" | "options" | "comparison" | "category" | "voucher";
   options?: { label: string; value: string; icon?: string }[];
 }
 
 const Chatbot: React.FC = () => {
   const { isOpen, openChatbot, closeChatbot } = useChatbot();
+  const { isAuthenticated } = useAuth();
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "1",
@@ -43,6 +53,19 @@ const Chatbot: React.FC = () => {
         { label: "Find Products", value: "Help me find a product", icon: "🔍" },
       ],
     },
+    // {
+    //   id: "3",
+    //   text: "Here is a special voucher for you! 🎉",
+    //   sender: "bot",
+    //   timestamp: new Date(),
+    //   type: "voucher",
+    //   voucher: {
+    //     code: "WELCOME20",
+    //     discount: "20% OFF",
+    //     description: "Get 20% off your first purchase. Valid for all items.",
+    //     expiryDate: "31 Dec 2024",
+    //   },
+    // },
   ]);
   const [inputValue, setInputValue] = useState("");
   const [isTyping, setIsTyping] = useState(false);
@@ -72,15 +95,52 @@ const Chatbot: React.FC = () => {
       const mappedMessages: Message[] = allMessages.map((msg) => {
         let type: Message["type"] = "text";
         let products: Product[] | undefined = undefined;
+        let categories: ChatbotCategory[] | undefined = undefined;
+        let voucher: Voucher | undefined = undefined;
         let text = msg.content;
 
         if (msg.intent === "product_view" && msg.type === "ai") {
           try {
-            products = JSON.parse(msg.content);
+            const items = JSON.parse(msg.content) as { items: Product[] };
+            products = items.items as Product[];
             type = "product";
             text = undefined;
           } catch (e) {
             console.error("Failed to parse product data", e);
+          }
+        } else if (msg.intent === "category_view" && msg.type === "ai") {
+          try {
+            const items = JSON.parse(msg.content) as { items: ChatbotCategory[] };
+            categories = items.items as ChatbotCategory[];
+            type = "category";
+            text = undefined;
+          } catch (e) {
+            console.error("Failed to parse category data", e);
+          }
+        } else if (msg.intent === "comparison_view" && msg.type === "ai") {
+          try {
+            const items = JSON.parse(msg.content) as { items: Product[] };
+            products = items.items as Product[];
+            type = "comparison";
+            text = undefined;
+          } catch (e) {
+            console.error("Failed to parse comparison data", e);
+          }
+        } else if (
+          (msg.intent === "voucher" || msg.intent === "voucher_apply") &&
+          msg.type === "ai"
+        ) {
+          try {
+            voucher = {
+              code: "WELCOME20",
+              discount: "20% OFF",
+              description:
+                "Get 20% off your first purchase. Valid for all items.",
+              expiryDate: "31 Dec 2026",
+            };
+            type = "voucher";
+          } catch (e) {
+            console.error("Failed to parse voucher data", e);
           }
         }
 
@@ -91,6 +151,8 @@ const Chatbot: React.FC = () => {
           timestamp: new Date(msg.createdAt),
           type: type,
           products: products,
+          categories: categories,
+          voucher: voucher,
         };
       });
 
@@ -132,6 +194,7 @@ const Chatbot: React.FC = () => {
   }, [isOpen]);
 
   const handleSend = async (text?: string) => {
+    if (!isAuthenticated) return;
     if (!text?.trim()) return;
 
     const userMessage: Message = {
@@ -145,6 +208,7 @@ const Chatbot: React.FC = () => {
     setMessages((prev) => [...prev, userMessage]);
     setInputValue("");
     setIsTyping(true);
+    setQuickReplies([]);
 
     sendMessage(
       { message: userMessage.text || "" },
@@ -152,11 +216,28 @@ const Chatbot: React.FC = () => {
         onSuccess: (response) => {
           let type: Message["type"] = "text";
           let products: Product[] | undefined = undefined;
+          let categories: ChatbotCategory[] | undefined = undefined;
           let options: Message["options"] | undefined = undefined;
+          let voucher: Voucher | undefined = undefined;
 
           if (response.intent === "product_discovery" && response.data) {
             type = "product";
-            products = response.data;
+            products = response.data.items as Product[];
+          } else if (response.intent === "category" && response.data) {
+            type = "category";
+            categories = response.data.items as ChatbotCategory[];
+          } else if (response.intent === "comparison" && response.data) {
+            type = "comparison";
+            products = response.data.items as Product[];
+          } else if (response.intent === "voucher_apply") {
+            type = "voucher";
+            voucher = {
+              code: "WELCOME20",
+              discount: "20% OFF",
+              description:
+                "Get 20% off your first purchase. Valid for all items.",
+              expiryDate: "31 Dec 2026",
+            };
           }
 
           if (response.suggestionQuestions) {
@@ -167,6 +248,14 @@ const Chatbot: React.FC = () => {
               label: q,
               value: q,
             }));
+
+            setQuickReplies(
+              response.suggestionQuestions.map((q, idx) => ({
+                id: `quick-${Date.now()}-${idx}`,
+                text: q,
+                icon: "💡",
+              }))
+            );
           }
 
           const botMessage: Message = {
@@ -175,6 +264,8 @@ const Chatbot: React.FC = () => {
             timestamp: new Date(),
             text: response.message,
             products: products,
+            categories: categories,
+            voucher: voucher,
             type: type,
             options: options,
           };
@@ -204,18 +295,23 @@ const Chatbot: React.FC = () => {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      handleSend(inputValue);
     }
   };
 
-  const quickReplies = [
+  const [quickReplies, setQuickReplies] = useState<{ id: string | number; text: string; icon: string }[]>([
     { id: 1, text: "Show me winter jackets", icon: "🧥" },
     { id: 2, text: "What's on sale?", icon: "🏷️" },
     { id: 3, text: "Under Rp 500K", icon: "💰" },
     { id: 4, text: "Compare products", icon: "⚖️" },
-  ];
+  ]);
 
   const handleQuickReply = (text: string) => {
+    if (!isAuthenticated) {
+      navigate(localizedPath("/login"));
+      closeChatbot();
+      return;
+    }
     handleSend(text);
   };
 
@@ -223,6 +319,14 @@ const Chatbot: React.FC = () => {
     // We don't close the chatbot here, allowing it to persist across navigation
     // The user can manually close it if they wish
     navigate(localizedPath(`/product/${product.id}`));
+  };
+
+  const handleApplyVoucher = (voucher: Voucher) => {
+    // Simulate API call to apply voucher
+    toast({
+      title: "Voucher Applied! 🎉",
+      description: `Voucher ${voucher.code} has been applied to your cart.`,
+    });
   };
 
   return (
@@ -309,7 +413,7 @@ const Chatbot: React.FC = () => {
                   key={message.id}
                   initial={{ opacity: 0, y: 10, scale: 0.95 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
-                  transition={{ duration: 0.3, delay: index * 0.05 }}
+                  transition={{ duration: 0.3 }}
                   className={`flex ${message.sender === "user" ? "justify-end" : "justify-start"}`}
                 >
                   {message.type === "product" && message.products ? (
@@ -319,9 +423,7 @@ const Chatbot: React.FC = () => {
                           whileHover={{ scale: 1.02 }}
                           className="max-w-[85%] bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-2xl rounded-bl-sm px-4 py-2.5 shadow-sm"
                         >
-                          <p className="text-sm leading-relaxed">
-                            {message.text}
-                          </p>
+                          <ChatbotMessageContent content={message.text} />
                         </motion.div>
                       )}
                       <div className="grid grid-cols-1 gap-3">
@@ -333,6 +435,49 @@ const Chatbot: React.FC = () => {
                           />
                         ))}
                       </div>
+                      {message.options && (
+                        <ChatbotOptions
+                          options={message.options}
+                          onOptionClick={handleQuickReply}
+                        />
+                      )}
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500 pl-2"
+                      >
+                        <p>
+                          {message.timestamp.toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                      </motion.div>
+                    </div>
+                  ) : message.type === "category" && message.categories ? (
+                    <div className="w-full space-y-3">
+                      {message.text && (
+                        <motion.div
+                          whileHover={{ scale: 1.02 }}
+                          className="max-w-[85%] bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-2xl rounded-bl-sm px-4 py-2.5 shadow-sm"
+                        >
+                          <ChatbotMessageContent content={message.text} />
+                        </motion.div>
+                      )}
+                      <div className="grid grid-cols-1 gap-3">
+                        {message.categories.map((category) => (
+                          <ChatbotCategoryCard
+                            key={category.id}
+                            category={category}
+                          />
+                        ))}
+                      </div>
+                      {message.options && (
+                        <ChatbotOptions
+                          options={message.options}
+                          onOptionClick={handleQuickReply}
+                        />
+                      )}
                       <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -353,25 +498,15 @@ const Chatbot: React.FC = () => {
                           whileHover={{ scale: 1.02 }}
                           className="max-w-[85%] bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-2xl rounded-bl-sm px-4 py-2.5 shadow-sm"
                         >
-                          <p className="text-sm leading-relaxed">
-                            {message.text}
-                          </p>
+                          <ChatbotMessageContent content={message.text} />
                         </motion.div>
                       )}
-                      <div className="flex flex-wrap gap-2">
-                        {message.options.map((option, idx) => (
-                          <motion.button
-                            key={idx}
-                            onClick={() => handleQuickReply(option.value)}
-                            className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-primary dark:hover:border-primary text-gray-700 dark:text-gray-300 text-sm px-4 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all flex items-center gap-2"
-                            whileHover={{ scale: 1.05, y: -2 }}
-                            whileTap={{ scale: 0.95 }}
-                          >
-                            <span>{option.icon}</span>
-                            <span className="font-medium">{option.label}</span>
-                          </motion.button>
-                        ))}
-                      </div>
+                      {message.options && (
+                        <ChatbotOptions
+                          options={message.options}
+                          onOptionClick={handleQuickReply}
+                        />
+                      )}
                       <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -392,15 +527,48 @@ const Chatbot: React.FC = () => {
                           whileHover={{ scale: 1.02 }}
                           className="max-w-[85%] bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-2xl rounded-bl-sm px-4 py-2.5 shadow-sm"
                         >
-                          <p className="text-sm leading-relaxed">
-                            {message.text}
-                          </p>
+                          <ChatbotMessageContent content={message.text || ""} />
                         </motion.div>
                       )}
                       <ChatbotProductComparison
                         products={message.products}
                         onViewDetails={handleViewProductDetails}
                       />
+                      {message.options && (
+                        <ChatbotOptions
+                          options={message.options}
+                          onOptionClick={handleQuickReply}
+                        />
+                      )}
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500 pl-2"
+                      >
+                        <p>
+                          {message.timestamp.toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                      </motion.div>
+                    </div>
+                  ) : message.type === "voucher" && message.voucher ? (
+                    <div className="w-full space-y-3">
+                      {message.text && (
+                        <motion.div
+                          whileHover={{ scale: 1.02 }}
+                          className="max-w-[85%] bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-2xl rounded-bl-sm px-4 py-2.5 shadow-sm"
+                        >
+                          <ChatbotMessageContent content={message.text} />
+                        </motion.div>
+                      )}
+                      <div className="w-[85%]">
+                        <ChatbotVoucherCard
+                          voucher={message.voucher}
+                          onApply={handleApplyVoucher}
+                        />
+                      </div>
                       <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -417,21 +585,17 @@ const Chatbot: React.FC = () => {
                   ) : (
                     <motion.div
                       whileHover={{ scale: 1.02 }}
-                      className={`max-w-[75%] rounded-2xl px-4 py-2.5 ${
-                        message.sender === "user"
-                          ? "bg-primary text-white rounded-br-sm shadow-md"
-                          : "bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-bl-sm shadow-sm"
-                      }`}
-                    >
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
-                        {message.text}
-                      </p>
-                      <p
-                        className={`text-xs mt-1 ${
-                          message.sender === "user"
-                            ? "text-white/60"
-                            : "text-gray-400 dark:text-gray-500"
+                      className={`max-w-[75%] rounded-2xl px-4 py-2.5 ${message.sender === "user"
+                        ? "bg-primary text-white rounded-br-sm shadow-md"
+                        : "bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-bl-sm shadow-sm"
                         }`}
+                    >
+                      <ChatbotMessageContent content={message.text || ""} />
+                      <p
+                        className={`text-xs mt-1 ${message.sender === "user"
+                          ? "text-white/60"
+                          : "text-gray-400 dark:text-gray-500"
+                          }`}
                       >
                         {message.timestamp.toLocaleTimeString([], {
                           hour: "2-digit",
@@ -509,7 +673,7 @@ const Chatbot: React.FC = () => {
             </div>
 
             {/* Quick Replies */}
-            {!isTyping && messages.length > 0 && (
+            {!isTyping && messages.length > 0 && isAuthenticated && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -532,54 +696,72 @@ const Chatbot: React.FC = () => {
 
             {/* Input */}
             <div className="p-4 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
-              <div className="flex items-end gap-2">
-                <div className="flex-1 bg-gray-50 dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 focus-within:border-primary dark:focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition-all">
-                  <textarea
-                    ref={textareaRef}
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder="Ask about products..."
-                    rows={1}
-                    className="w-full px-4 py-3 bg-transparent text-gray-800 dark:text-gray-200 text-sm resize-none outline-none placeholder-gray-400 dark:placeholder-gray-500 max-h-24"
-                  />
-                </div>
-                <motion.button
-                  onClick={() => handleSend(inputValue)}
-                  disabled={!inputValue.trim()}
-                  className={`p-3 rounded-2xl transition-all ${
-                    inputValue.trim()
-                      ? "bg-primary hover:shadow-lg text-white"
-                      : "bg-gray-200 dark:bg-gray-800 text-gray-400 cursor-not-allowed"
-                  }`}
-                  whileHover={inputValue.trim() ? { scale: 1.05 } : {}}
-                  whileTap={inputValue.trim() ? { scale: 0.95 } : {}}
-                >
-                  <motion.svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    initial={{ rotate: 90 }}
-                    animate={
-                      inputValue.trim()
-                        ? { rotate: [90, 75, 90] }
-                        : { rotate: 90 }
-                    }
-                    transition={{ duration: 0.3 }}
+              {isAuthenticated ? (
+                <>
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1 bg-gray-50 dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 focus-within:border-primary dark:focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition-all">
+                      <textarea
+                        ref={textareaRef}
+                        value={inputValue}
+                        onChange={(e) => setInputValue(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        placeholder="Ask about products..."
+                        rows={1}
+                        className="w-full px-4 py-3 bg-transparent text-gray-800 dark:text-gray-200 text-sm resize-none outline-none placeholder-gray-400 dark:placeholder-gray-500 max-h-24"
+                      />
+                    </div>
+                    <motion.button
+                      onClick={() => handleSend(inputValue)}
+                      disabled={!inputValue.trim()}
+                      className={`p-3 rounded-2xl transition-all ${inputValue.trim()
+                        ? "bg-primary hover:shadow-lg text-white"
+                        : "bg-gray-200 dark:bg-gray-800 text-gray-400 cursor-not-allowed"
+                        }`}
+                      whileHover={inputValue.trim() ? { scale: 1.05 } : {}}
+                      whileTap={inputValue.trim() ? { scale: 0.95 } : {}}
+                    >
+                      <motion.svg
+                        className="w-5 h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        initial={{ rotate: 90 }}
+                        animate={
+                          inputValue.trim()
+                            ? { rotate: [90, 75, 90] }
+                            : { rotate: 90 }
+                        }
+                        transition={{ duration: 0.3 }}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                        />
+                      </motion.svg>
+                    </motion.button>
+                  </div>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 text-center">
+                    Press Enter to send • Shift+Enter for new line
+                  </p>
+                </>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-2 space-y-3">
+                  <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
+                    Please login to start chatting with our assistant.
+                  </p>
+                  <button
+                    onClick={() => {
+                      navigate(localizedPath("/login"));
+                      closeChatbot();
+                    }}
+                    className="px-6 py-2 bg-primary text-white text-sm font-medium rounded-full hover:bg-primary/90 transition-colors shadow-sm"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-                    />
-                  </motion.svg>
-                </motion.button>
-              </div>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 text-center">
-                Press Enter to send • Shift+Enter for new line
-              </p>
+                    Login Now
+                  </button>
+                </div>
+              )}
             </div>
           </motion.div>
         ) : (

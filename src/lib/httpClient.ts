@@ -36,8 +36,10 @@ type HttpRequestOptions = {
   withAuth?: boolean;
 };
 
+import { getEnv } from "@/config/env";
+
 function getBaseUrl(): string {
-  const baseUrl = import.meta.env.VITE_API_BASE_URL as string | undefined;
+  const baseUrl = getEnv("VITE_API_BASE_URL");
   if (!baseUrl) {
     throw new Error("VITE_API_BASE_URL is not set");
   }

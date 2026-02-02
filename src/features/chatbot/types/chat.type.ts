@@ -1,5 +1,15 @@
 import { Product } from "@/features/product/types/product.type";
 
+export interface ChatbotCategory {
+  id: number;
+  name: string;
+  slug: string;
+  description: string;
+  putOnHighlight: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ChatMessage {
   id: number;
   type: "human" | "ai";
@@ -28,7 +38,9 @@ export interface SendMessagePayload {
 
 export interface ChatResponse {
   message: string;
-  data?: Product[];
+  data?: {
+    items: Product[] | ChatbotCategory[];
+  };
   suggestionQuestions?: string[];
   intent?: string;
 }
