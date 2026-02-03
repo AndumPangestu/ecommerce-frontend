@@ -29,44 +29,33 @@ interface Message {
   options?: { label: string; value: string; icon?: string }[];
 }
 
+const INITIAL_MESSAGES: Message[] = [
+  {
+    id: "1",
+    text: "Hi! Welcome to Andelevate Shop ✨\nI'm your personal shopping assistant.",
+    sender: "bot",
+    timestamp: new Date(),
+    type: "text",
+  },
+  {
+    id: "2",
+    text: "How can I help you discover your perfect style today?",
+    sender: "bot",
+    timestamp: new Date(),
+    type: "options",
+    options: [
+      { label: "New Arrivals", value: "Show me new arrivals", icon: "✨" },
+      { label: "Sale Items", value: "Show me sale items", icon: "🏷️" },
+      { label: "Best Sellers", value: "Show me best sellers", icon: "🔥" },
+      { label: "Find Products", value: "Help me find a product", icon: "🔍" },
+    ],
+  },
+];
+
 const Chatbot: React.FC = () => {
   const { isOpen, openChatbot, closeChatbot } = useChatbot();
   const { isAuthenticated } = useAuth();
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "1",
-      text: "Hi! Welcome to Andelevate Shop ✨\nI'm your personal shopping assistant.",
-      sender: "bot",
-      timestamp: new Date(),
-      type: "text",
-    },
-    {
-      id: "2",
-      text: "How can I help you discover your perfect style today?",
-      sender: "bot",
-      timestamp: new Date(),
-      type: "options",
-      options: [
-        { label: "New Arrivals", value: "Show me new arrivals", icon: "✨" },
-        { label: "Sale Items", value: "Show me sale items", icon: "🏷️" },
-        { label: "Best Sellers", value: "Show me best sellers", icon: "🔥" },
-        { label: "Find Products", value: "Help me find a product", icon: "🔍" },
-      ],
-    },
-    // {
-    //   id: "3",
-    //   text: "Here is a special voucher for you! 🎉",
-    //   sender: "bot",
-    //   timestamp: new Date(),
-    //   type: "voucher",
-    //   voucher: {
-    //     code: "WELCOME20",
-    //     discount: "20% OFF",
-    //     description: "Get 20% off your first purchase. Valid for all items.",
-    //     expiryDate: "31 Dec 2024",
-    //   },
-    // },
-  ]);
+  const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES);
   const [inputValue, setInputValue] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -85,6 +74,12 @@ const Chatbot: React.FC = () => {
       behavior: smooth ? "smooth" : "auto",
     });
   };
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setMessages(INITIAL_MESSAGES);
+    }
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (chatHistoryData?.data && chatHistoryData.data.length > 0) {
@@ -110,7 +105,9 @@ const Chatbot: React.FC = () => {
           }
         } else if (msg.intent === "category_view" && msg.type === "ai") {
           try {
-            const items = JSON.parse(msg.content) as { items: ChatbotCategory[] };
+            const items = JSON.parse(msg.content) as {
+              items: ChatbotCategory[];
+            };
             categories = items.items as ChatbotCategory[];
             type = "category";
             text = undefined;
@@ -254,7 +251,7 @@ const Chatbot: React.FC = () => {
                 id: `quick-${Date.now()}-${idx}`,
                 text: q,
                 icon: "💡",
-              }))
+              })),
             );
           }
 
@@ -299,7 +296,9 @@ const Chatbot: React.FC = () => {
     }
   };
 
-  const [quickReplies, setQuickReplies] = useState<{ id: string | number; text: string; icon: string }[]>([
+  const [quickReplies, setQuickReplies] = useState<
+    { id: string | number; text: string; icon: string }[]
+  >([
     { id: 1, text: "Show me winter jackets", icon: "🧥" },
     { id: 2, text: "What's on sale?", icon: "🏷️" },
     { id: 3, text: "Under Rp 500K", icon: "💰" },
@@ -585,17 +584,19 @@ const Chatbot: React.FC = () => {
                   ) : (
                     <motion.div
                       whileHover={{ scale: 1.02 }}
-                      className={`max-w-[75%] rounded-2xl px-4 py-2.5 ${message.sender === "user"
-                        ? "bg-primary text-white rounded-br-sm shadow-md"
-                        : "bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-bl-sm shadow-sm"
-                        }`}
+                      className={`max-w-[75%] rounded-2xl px-4 py-2.5 ${
+                        message.sender === "user"
+                          ? "bg-primary text-white rounded-br-sm shadow-md"
+                          : "bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-bl-sm shadow-sm"
+                      }`}
                     >
                       <ChatbotMessageContent content={message.text || ""} />
                       <p
-                        className={`text-xs mt-1 ${message.sender === "user"
-                          ? "text-white/60"
-                          : "text-gray-400 dark:text-gray-500"
-                          }`}
+                        className={`text-xs mt-1 ${
+                          message.sender === "user"
+                            ? "text-white/60"
+                            : "text-gray-400 dark:text-gray-500"
+                        }`}
                       >
                         {message.timestamp.toLocaleTimeString([], {
                           hour: "2-digit",
@@ -713,10 +714,11 @@ const Chatbot: React.FC = () => {
                     <motion.button
                       onClick={() => handleSend(inputValue)}
                       disabled={!inputValue.trim()}
-                      className={`p-3 rounded-2xl transition-all ${inputValue.trim()
-                        ? "bg-primary hover:shadow-lg text-white"
-                        : "bg-gray-200 dark:bg-gray-800 text-gray-400 cursor-not-allowed"
-                        }`}
+                      className={`p-3 rounded-2xl transition-all ${
+                        inputValue.trim()
+                          ? "bg-primary hover:shadow-lg text-white"
+                          : "bg-gray-200 dark:bg-gray-800 text-gray-400 cursor-not-allowed"
+                      }`}
                       whileHover={inputValue.trim() ? { scale: 1.05 } : {}}
                       whileTap={inputValue.trim() ? { scale: 0.95 } : {}}
                     >
