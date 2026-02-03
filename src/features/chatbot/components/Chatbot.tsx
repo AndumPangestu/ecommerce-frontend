@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { useLocalizedPath } from "@/shared/i18n/LanguageContext";
 import { useChatbot } from "@/features/chatbot/context/ChatbotContext";
 import { useAuth } from "@/features/auth/context/AuthContext";
@@ -68,6 +69,7 @@ const Chatbot: React.FC = () => {
   const localizedPath = useLocalizedPath();
   const { data: chatHistoryData } = useChatHistory();
   const { mutate: sendMessage } = useSendMessage();
+  const queryClient = useQueryClient();
 
   const scrollToBottom = (smooth = true) => {
     messagesEndRef.current?.scrollIntoView({
@@ -78,11 +80,16 @@ const Chatbot: React.FC = () => {
   useEffect(() => {
     if (!isAuthenticated) {
       setMessages(INITIAL_MESSAGES);
+      queryClient.removeQueries({ queryKey: ["chat-history"] });
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, queryClient]);
 
   useEffect(() => {
-    if (chatHistoryData?.data && chatHistoryData.data.length > 0) {
+    if (
+      isAuthenticated &&
+      chatHistoryData?.data &&
+      chatHistoryData.data.length > 0
+    ) {
       const allMessages = chatHistoryData.data.flatMap(
         (session) => session.messages,
       );
@@ -157,7 +164,7 @@ const Chatbot: React.FC = () => {
         setMessages(mappedMessages);
       }
     }
-  }, [chatHistoryData]);
+  }, [chatHistoryData, isAuthenticated]);
 
   useEffect(() => {
     scrollToBottom();
